@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const TransitionApp());
@@ -61,6 +64,76 @@ class ProblemItem {
   });
 }
 
+/// Small API client for the deployed SIH backend. Pass an authenticated token
+/// when building the app: --dart-define=SIH_API_TOKEN=<your JWT>.
+class SihApi {
+  static const String baseUrl = 'https://sih-a24k.onrender.com';
+  static const String token = String.fromEnvironment('SIH_API_TOKEN');
+
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+      };
+
+  ProblemItem _toProblem(Map<String, dynamic> issue) => ProblemItem(
+        id: '${issue['id'] ?? 'NEW'}',
+        title: '${issue['title'] ?? 'Untitled issue'}',
+        category: '${issue['category'] ?? 'Civic issue'}',
+        location: '${issue['address'] ?? 'Location unavailable'}',
+        priorityLabel: '${issue['priority'] ?? 'Normal'}',
+        priorityScore: 0,
+        complexityLabel: 'Awaiting assessment',
+        complexityScore: 0,
+        commutersAffected: 0,
+        supportRequired: 'Assessment pending',
+        requiredSkills: 'To be assigned',
+        currentStage: '${issue['status'] ?? 'Reported'}',
+        sponsorName: 'Unassigned',
+      );
+
+  Future<List<ProblemItem>> listIssues() async {
+    final response = await http.get(Uri.parse('$baseUrl/issues'));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Unable to load issues (${response.statusCode})');
+    }
+    final decoded = jsonDecode(response.body);
+    final items = decoded is List
+        ? decoded
+        : (decoded is Map<String, dynamic> ? decoded['items'] ?? decoded['issues'] ?? [] : []);
+    if (items is! List) return [];
+    return items
+        .whereType<Map>()
+        .map((raw) => _toProblem(Map<String, dynamic>.from(raw)))
+        .toList();
+  }
+
+  Future<ProblemItem> createIssue({
+    required String title,
+    required String category,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/issues'),
+      headers: _headers,
+      body: jsonEncode({
+        'title': title,
+        'description': title,
+        'category': category,
+        'priority': 'LOW',
+        'latitude': 28.5355,
+        'longitude': 77.3910,
+        'address': 'Sector 18, Gate 2 Metro Exit',
+        'media_urls': [],
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final detail = response.body.isEmpty ? '' : ': ${response.body}';
+      throw Exception('Report could not be submitted (${response.statusCode})$detail');
+    }
+    final issue = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    return _toProblem(issue);
+  }
+}
+
 // ==========================================
 // MAIN APPLICATION ENTRY POINT
 // ==========================================
@@ -113,6 +186,73 @@ class _TransitionAppState extends State<TransitionApp> {
   String _citizenSelectedCategory = "Road damage";
   bool _confirmCheck = false;
   String _auditVerdict = "Pending";
+  final SihApi _api = SihApi();
+  final TextEditingController _reportTitleController = TextEditingController();
+  List<ProblemItem> _apiProblems = [];
+  bool _issuesLoading = false;
+  String? _issuesError;
+  String? _submittedIssueId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadIssues();
+  }
+
+  @override
+  void dispose() {
+    _reportTitleController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadIssues() async {
+    setState(() {
+      _issuesLoading = true;
+      _issuesError = null;
+    });
+    try {
+      final issues = await _api.listIssues();
+      if (mounted) {
+        setState(() => _apiProblems = issues);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _issuesError = error.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _issuesLoading = false);
+      }
+    }
+  }
+
+  Future<void> _submitIssue() async {
+    final title = _reportTitleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a short problem description first.')),
+      );
+      return;
+    }
+    try {
+      final issue = await _api.createIssue(
+        title: title,
+        category: _citizenSelectedCategory,
+      );
+      if (!mounted) return;
+      setState(() {
+        _submittedIssueId = issue.id;
+        _apiProblems = [issue, ..._apiProblems];
+        _reportStep = 5;
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.toString())),
+        );
+      }
+    }
+  }
 
   void _navigateTo(AppView view) {
     setState(() {
@@ -716,6 +856,32 @@ class _TransitionAppState extends State<TransitionApp> {
             ),
           ),
           const SizedBox(height: 20),
+          Row(
+            children: [
+              const Icon(Icons.cloud_done_outlined, size: 16, color: Color(0xFF006B4D)),
+              const SizedBox(width: 6),
+              Text(
+                _issuesLoading ? 'Syncing live issues…' : 'Live issues from SIH API',
+                style: const TextStyle(color: Color(0xFF006B4D), fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              IconButton(tooltip: 'Refresh live issues', onPressed: _issuesLoading ? null : _loadIssues, icon: const Icon(Icons.refresh, size: 18)),
+            ],
+          ),
+          if (_issuesError != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('Live data unavailable: $_issuesError', style: const TextStyle(color: Colors.red, fontSize: 11)),
+            ),
+          ..._apiProblems.take(3).map((issue) => Card(
+            child: ListTile(
+              leading: const Icon(Icons.report_problem_outlined, color: Color(0xFF006B4D)),
+              title: Text(issue.title),
+              subtitle: Text('${issue.category} • ${issue.currentStage}'),
+              trailing: Text(issue.priorityLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              onTap: () => _navigateTo(AppView.problemDetailView),
+            ),
+          )),
           // Action Dashboard Cards
           const Text("Action Dashboard",
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -854,7 +1020,8 @@ class _TransitionAppState extends State<TransitionApp> {
             const Text("Step 2: Describe the Problem",
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            const TextField(
+            TextField(
+              controller: _reportTitleController,
               maxLength: 140,
               maxLines: 3,
               decoration: InputDecoration(
@@ -965,7 +1132,7 @@ class _TransitionAppState extends State<TransitionApp> {
               style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0284C7),
                   minimumSize: const Size(double.infinity, 48)),
-              onPressed: () => setState(() => _reportStep = 5),
+              onPressed: _submitIssue,
               child: const Text("+ Add Evidence to Existing Problem #TR-8812",
                   style: TextStyle(color: Colors.white)),
             ),
@@ -973,7 +1140,7 @@ class _TransitionAppState extends State<TransitionApp> {
             OutlinedButton(
               style: OutlinedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 48)),
-              onPressed: () => setState(() => _reportStep = 5),
+              onPressed: _submitIssue,
               child: const Text("Continue as New Report"),
             ),
           ],
@@ -989,7 +1156,7 @@ class _TransitionAppState extends State<TransitionApp> {
                       style:
                           TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   SizedBox(height: 8),
-                  Text("Problem ID: #TR-4092",
+                  Text("Problem ID: #${_submittedIssueId ?? 'TR-4092'}",
                       style: TextStyle(fontSize: 16, color: Color(0xFF64748B))),
                   Text("Status: Reported ➔ AI Review Pending"),
                 ],
