@@ -42,15 +42,106 @@ class _ProblemDetailScreenState extends State<ProblemDetailScreen> {
         final issue = await issueService.getIssueById(widget.issueId!);
         if (mounted) setState(() => _issue = issue);
       } else {
-        final list = await issueService.listIssues(pageSize: 1);
-        if (list.items.isNotEmpty) {
-          if (mounted) setState(() => _issue = list.items.first);
+        if (mounted) {
+          setState(() {
+            _errorMessage = "No civic issue was selected.";
+          });
         }
       }
     } catch (e) {
       if (mounted) setState(() => _errorMessage = e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _deleteIssue() async {
+    final issue = _issue;
+    if (issue == null) return;
+
+    final controller = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text("Delete Issue"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Please explain why you want to delete this issue. "
+                "This explanation is required.",
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: "Reason for deletion",
+                  hintText: "Enter your explanation...",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text("Cancel"),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              onPressed: () {
+                if (controller.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                      content: Text("Please provide a reason for deletion."),
+                    ),
+                  );
+                  return;
+                }
+
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text("Delete Issue"),
+            ),
+          ],
+        );
+      },
+    );
+
+    final reason = controller.text.trim();
+    controller.dispose();
+
+    if (confirmed != true || reason.isEmpty || !mounted) return;
+
+    try {
+      await ServiceLocator.instance.issueService.deleteIssue(
+        issue.id,
+        reason,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Issue deleted successfully."),
+        ),
+      );
+
+      widget.onNavigate(AppView.citizenHome);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to delete issue: $e"),
+        ),
+      );
     }
   }
 
@@ -68,14 +159,20 @@ class _ProblemDetailScreenState extends State<ProblemDetailScreen> {
     }
 
     final issue = _issue;
-    final docketId = issue != null
-        ? issue.id.substring(0, 8).toUpperCase()
-        : "TR-8812";
-    final statusText = issue?.displayStatus ?? "UNDER EXECUTION";
-    final title = issue?.title ?? "Sector 18 Road Infrastructure / Sinkhole";
-    final category = issue?.displayCategory ?? "Road / Infrastructure";
-    final priority = issue?.displayPriority ?? "High";
-    final address = issue?.address ?? "Ward 14 • 8th Cross Arterial Junction";
+    if (issue == null) {
+      return const ErrorView(
+        message: "The selected civic issue could not be found.",
+      );
+    }
+
+    final docketId = issue.id.substring(0, 8).toUpperCase();
+    final statusText = issue.displayStatus;
+    final title = issue.title;
+    final category = issue.displayCategory;
+    final priority = issue.displayPriority;
+    final address = issue.address?.trim().isNotEmpty == true
+        ? issue.address!.trim()
+        : "Location details unavailable";
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -121,12 +218,12 @@ class _ProblemDetailScreenState extends State<ProblemDetailScreen> {
             "$category • $address",
             style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
           ),
-          if (issue?.firstImageUrl != null) ...[
+          if (issue.firstImageUrl != null) ...[
             const SizedBox(height: 12),
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.network(
-                issue!.firstImageUrl!,
+                issue.firstImageUrl!,
                 height: 160,
                 width: double.infinity,
                 fit: BoxFit.cover,
@@ -165,7 +262,8 @@ class _ProblemDetailScreenState extends State<ProblemDetailScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          "• Category: $category\n• Coordinates: ${issue?.latitude?.toStringAsFixed(3) ?? '28.535'}, ${issue?.longitude?.toStringAsFixed(3) ?? '77.391'}\n• Recency: Recent Active",
+                          "• Category: $category\n"
+                          "• Coordinates: ${issue.latitude != null && issue.longitude != null ? "${issue.latitude!.toStringAsFixed(4)}, ${issue.longitude!.toStringAsFixed(4)}" : "Unavailable"}",
                           style: const TextStyle(fontSize: 11),
                         ),
                       ],
@@ -218,22 +316,22 @@ class _ProblemDetailScreenState extends State<ProblemDetailScreen> {
           const SizedBox(height: 12),
           _timelineStep(
             "1. Reported",
-            issue?.createdAt != null
-                ? "Logged by Citizen on ${issue!.createdAt!.toLocal().toString().split(' ')[0]}"
+            issue.createdAt != null
+                ? "Logged by Citizen on ${issue.createdAt!.toLocal().toString().split(' ')[0]}"
                 : "Reported via Citizen Portal",
             true,
           ),
           _timelineStep(
             "2. AI Understood",
-            issue?.categoryConfidence != null
-                ? "Classification: ${issue?.displayCategory} (${(issue!.categoryConfidence! * 100).toInt()}% conf)"
+            issue.categoryConfidence != null
+                ? "Classification: ${issue.displayCategory} (${(issue.categoryConfidence! * 100).toInt()}% conf)"
                 : "Vision model verified issue category",
-            issue?.status != 'REPORTED',
+            issue.status != 'REPORTED',
           ),
           _timelineStep(
             "3. Community Verified",
             "Validated by local residents and geofence",
-            issue?.status != 'REPORTED' && issue?.status != 'AI_CLASSIFIED',
+            issue.status != 'REPORTED' && issue.status != 'AI_CLASSIFIED',
           ),
           _timelineStep(
             "4. Prioritized",
@@ -243,38 +341,73 @@ class _ProblemDetailScreenState extends State<ProblemDetailScreen> {
           _timelineStep(
             "5. Taken up by Industrialist",
             "Industry partner allocated patronage & mentorship",
-            issue?.status == 'IN_PROGRESS' ||
-                issue?.status == 'SOLUTION_SUBMITTED' ||
-                issue?.status == 'EVALUATED' ||
-                issue?.status == 'RESOLVED',
+            issue.status == 'IN_PROGRESS' ||
+                issue.status == 'SOLUTION_SUBMITTED' ||
+                issue.status == 'EVALUATED' ||
+                issue.status == 'RESOLVED',
           ),
           _timelineStep(
             "6. Students Selected",
-            issue?.assignedStudentId != null
-                ? "Student Assigned: #${issue!.assignedStudentId!.substring(0, 8)}"
+            issue.assignedStudentId != null
+                ? "Student Assigned: #${issue.assignedStudentId!.substring(0, 8)}"
                 : "Field engineering team assignment",
-            issue?.assignedStudentId != null,
+            issue.assignedStudentId != null,
           ),
           _timelineStep(
             "7. Under Execution",
             "On-site diagnostic and solution development",
-            issue?.status == 'IN_PROGRESS' ||
-                issue?.status == 'SOLUTION_SUBMITTED' ||
-                issue?.status == 'EVALUATED' ||
-                issue?.status == 'RESOLVED',
+            issue.status == 'IN_PROGRESS' ||
+                issue.status == 'SOLUTION_SUBMITTED' ||
+                issue.status == 'EVALUATED' ||
+                issue.status == 'RESOLVED',
           ),
           _timelineStep(
             "8. Evidence Submitted",
             "Student EXIF photos & milestone documentation",
-            issue?.status == 'SOLUTION_SUBMITTED' ||
-                issue?.status == 'EVALUATED' ||
-                issue?.status == 'RESOLVED',
+            issue.status == 'SOLUTION_SUBMITTED' ||
+                issue.status == 'EVALUATED' ||
+                issue.status == 'RESOLVED',
           ),
           _timelineStep(
             "9. Outcome Verified",
             "Independent verification and audit verdict",
-            issue?.status == 'RESOLVED',
+            issue.status == 'RESOLVED',
           ),
+
+          if (issue.reporterId.isNotEmpty &&
+              ServiceLocator.instance.authManager.currentProfile?.id ==
+                  issue.reporterId &&
+              ServiceLocator.instance.authManager.currentProfile?.role
+                      .toLowerCase() ==
+                  'citizen') ...[
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _deleteIssue,
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                label: const Text(
+                  "Delete This Issue",
+                  style: TextStyle(color: Colors.red),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.red),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Center(
+              child: Text(
+                "Only the citizen who reported this issue can delete it.",
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF64748B),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
         ],
       ),
     );

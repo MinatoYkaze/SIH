@@ -81,42 +81,42 @@ class _CitizenReportWizardScreenState extends State<CitizenReportWizardScreen> {
   }
 
   Future<void> _detectLocation() async {
-    setState(() {
-      _isLocating = true;
-      _addressPreview = "Detecting current coordinates...";
-    });
+    if (mounted) {
+      setState(() {
+        _isLocating = true;
+        _addressPreview = "Detecting current coordinates...";
+      });
+    }
 
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
       if (!serviceEnabled) {
+        if (!mounted) return;
         setState(() {
-          _latitude = 28.5355;
-          _longitude = 77.3910;
-          _addressPreview = "Sector 18, Gate 2 Metro Exit (GPS Disabled)";
+          _latitude = null;
+          _longitude = null;
+          _addressPreview = "Location services are disabled.";
           _isLocating = false;
         });
         return;
       }
 
-      LocationPermission permission = await Geolocator.checkPermission();
+      var permission = await Geolocator.checkPermission();
+
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() {
-            _latitude = 28.5355;
-            _longitude = 77.3910;
-            _addressPreview = "Sector 18, Gate 2 Metro Exit (Default Location)";
-            _isLocating = false;
-          });
-          return;
-        }
       }
 
-      if (permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
         setState(() {
-          _latitude = 28.5355;
-          _longitude = 77.3910;
-          _addressPreview = "Sector 18, Gate 2 Metro Exit (Default Location)";
+          _latitude = null;
+          _longitude = null;
+          _addressPreview = permission == LocationPermission.deniedForever
+              ? "Location permission is permanently denied."
+              : "Location permission was denied.";
           _isLocating = false;
         });
         return;
@@ -129,18 +129,23 @@ class _CitizenReportWizardScreenState extends State<CitizenReportWizardScreen> {
         ),
       );
 
+      if (!mounted) return;
+
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
         _addressPreview =
-            "GPS Verified: ${_latitude!.toStringAsFixed(4)}° N, ${_longitude!.toStringAsFixed(4)}° E";
+            "GPS Verified: ${position.latitude.toStringAsFixed(4)}° N, "
+            "${position.longitude.toStringAsFixed(4)}° E";
         _isLocating = false;
       });
     } catch (_) {
+      if (!mounted) return;
+
       setState(() {
-        _latitude = 28.5355;
-        _longitude = 77.3910;
-        _addressPreview = "Sector 18, Gate 2 Metro Corridor";
+        _latitude = null;
+        _longitude = null;
+        _addressPreview = "Unable to detect GPS location.";
         _isLocating = false;
       });
     }
@@ -425,7 +430,9 @@ class _CitizenReportWizardScreenState extends State<CitizenReportWizardScreen> {
                 child: _isLocating
                     ? const CircularProgressIndicator(color: Color(0xFF006B4D))
                     : Text(
-                        "GPS Detected:\n${_latitude?.toStringAsFixed(4) ?? '28.5355'}° N, ${_longitude?.toStringAsFixed(4) ?? '77.3910'}° E\nAdjust Pin on Map",
+                        _latitude != null && _longitude != null
+                            ? "GPS Detected:\n${_latitude!.toStringAsFixed(4)}° N, ${_longitude!.toStringAsFixed(4)}° E\nAdjust Pin on Map"
+                            : "GPS location unavailable\nEnable location services to continue",
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
@@ -453,72 +460,228 @@ class _CitizenReportWizardScreenState extends State<CitizenReportWizardScreen> {
           // STEP 4: AI UNDERSTANDING & DEDUPLICATION
           if (_reportStep == 4) ...[
             Container(
-              padding: const EdgeInsets.all(12),
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(12),
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: const Color(0xFFBBF7D0),
+                ),
               ),
               child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.auto_awesome, color: Color(0xFF0284C7)),
-                  SizedBox(width: 8),
-                  Text(
-                    "CIVICAI COPILOT • Reviewable Preview",
-                    style: TextStyle(
-                      color: Color(0xFF0284C7),
-                      fontWeight: FontWeight.bold,
+                  Icon(
+                    Icons.verified_rounded,
+                    color: Color(0xFF16A34A),
+                    size: 24,
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Report Review",
+                          style: TextStyle(
+                            color: Color(0xFF166534),
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          "Review the information before submitting your report.",
+                          style: TextStyle(
+                            color: Color(0xFF475569),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
+
             const SizedBox(height: 16),
+
             Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: const BorderSide(
+                  color: Color(0xFFE2E8F0),
+                ),
+              ),
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(18),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      "Target Category: $_citizenSelectedCategory (Verified by Reporter)",
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Estimated Severity: $_selectedPriority (Ground Inspection)",
-                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(),
                     const Text(
-                      "SIMILAR NEARBY ISSUE DETECTED",
+                      "REPORT DETAILS",
                       style: TextStyle(
-                        color: Color(0xFFD97706),
-                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF64748B),
                         fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      "Historical docket in sector • Coordinates validated via GPS",
-                      style: TextStyle(fontSize: 13),
+
+                    const SizedBox(height: 14),
+
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.category_outlined,
+                          color: Color(0xFF006B4D),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                "Category",
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                _citizenSelectedCategory,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 16),
+
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.priority_high_rounded,
+                          color: Color(0xFFDC2626),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                "Priority",
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                _selectedPriority,
+                                style: const TextStyle(
+                                  color: Color(0xFFDC2626),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 16),
+
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          color: Color(0xFFD97706),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Nearby Issue Check",
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              SizedBox(height: 3),
+                              Text(
+                                "A similar historical issue was found nearby.",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              SizedBox(height: 3),
+                              Text(
+                                "Location validated using GPS.",
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+
+            const SizedBox(height: 20),
+
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF006B4D),
-                minimumSize: const Size(double.infinity, 48),
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               onPressed: _isSubmitting ? null : _submitReport,
               child: _isSubmitting
-                  ? const CircularProgressIndicator(color: Colors.white)
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
+                    )
                   : const Text(
-                      "Submit Report to Platform",
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      "Submit Report",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
                     ),
             ),
           ],
@@ -535,14 +698,19 @@ class _CitizenReportWizardScreenState extends State<CitizenReportWizardScreen> {
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    "Problem ID: #${_createdIssue?.id.substring(0, 8).toUpperCase() ?? 'TR-4092'}",
-                    style: const TextStyle(fontSize: 16, color: Color(0xFF64748B)),
-                  ),
-                  Text(
-                    "Status: ${_createdIssue?.displayStatus ?? 'Reported ➔ AI Review Pending'}",
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
+                  if (_createdIssue != null) ...[
+                    Text(
+                      "Problem ID: #${_createdIssue!.id.substring(0, 8).toUpperCase()}",
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    Text(
+                      "Status: ${_createdIssue!.displayStatus}",
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -552,7 +720,12 @@ class _CitizenReportWizardScreenState extends State<CitizenReportWizardScreen> {
                 backgroundColor: const Color(0xFF006B4D),
                 minimumSize: const Size(double.infinity, 48),
               ),
-              onPressed: () => widget.onNavigate(AppView.problemDetailView),
+              onPressed: _createdIssue == null
+                  ? null
+                  : () {
+                      widget.onIssueCreated?.call(_createdIssue!.id);
+                      widget.onNavigate(AppView.problemDetailView);
+                    },
               child: const Text(
                 "View Problem Details",
                 style: TextStyle(color: Colors.white),

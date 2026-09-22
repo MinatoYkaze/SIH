@@ -52,7 +52,29 @@ class AuthManager extends ChangeNotifier {
           _fallbackToken = session.accessToken;
           _fallbackUserId = session.user.id;
           _fallbackEmail = session.user.email;
-          unawaited(_syncProfile(session.user));
+
+          final callbackRole = kIsWeb
+              ? Uri.base.queryParameters['preferredRole']
+              : null;
+
+          final metadataRole =
+              (callbackRole ??
+                      session.user.userMetadata?['role'] ??
+                      'citizen')
+                  .toString()
+                  .toLowerCase();
+
+          _currentProfile = ProfileModel(
+            id: session.user.id,
+            name: (session.user.userMetadata?['name'] ??
+                    session.user.userMetadata?['full_name'] ??
+                    session.user.email?.split('@').first ??
+                    'User')
+                .toString(),
+            role: metadataRole,
+            avatarUrl:
+                session.user.userMetadata?['avatar_url'] as String?,
+          );
         }
 
         Supabase.instance.client.auth.onAuthStateChange.listen((data) {
@@ -61,7 +83,9 @@ class AuthManager extends ChangeNotifier {
             _fallbackToken = s.accessToken;
             _fallbackUserId = s.user.id;
             _fallbackEmail = s.user.email;
-            _syncProfile(s.user);
+            debugPrint(
+              'AUTH EVENT: ${data.event} | CURRENT PROFILE = ${_currentProfile?.role}',
+            );
           } else if (data.event == AuthChangeEvent.signedOut) {
             _fallbackToken = null;
             _fallbackUserId = null;
@@ -85,10 +109,23 @@ class AuthManager extends ChangeNotifier {
 
   Future<void> signInWithGoogle({String? preferredRole}) async {
     if (AppConfig.isSupabaseConfigured) {
+      final callbackRole =
+          preferredRole != null && preferredRole.trim().isNotEmpty
+              ? preferredRole.toLowerCase()
+              : null;
+
+      final redirectUrl = kIsWeb
+          ? Uri.base.replace(
+              queryParameters: {
+                ...Uri.base.queryParameters,
+                if (callbackRole != null) 'preferredRole': callbackRole,
+              },
+            ).toString()
+          : 'io.supabase.transition://login-callback';
+
       await Supabase.instance.client.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: kIsWeb ? null : 'io.supabase.transition://login-callback',
-        queryParams: preferredRole != null ? {'role': preferredRole} : null,
+        redirectTo: redirectUrl,
       );
     } else {
       _fallbackToken = 'demo-google-token';
@@ -119,7 +156,26 @@ class AuthManager extends ChangeNotifier {
         _fallbackUserId = response.user?.id;
         _fallbackEmail = response.user?.email;
         if (response.user != null) {
-          await _syncProfile(response.user!, preferredRole: preferredRole);
+          final selectedRole =
+              (preferredRole ?? 'citizen').toLowerCase();
+
+          final userName =
+              (response.user!.userMetadata?['name'] ??
+                      response.user!.userMetadata?['full_name'] ??
+                      response.user!.email?.split('@').first ??
+                      'User')
+                  .toString();
+
+          _currentProfile = ProfileModel(
+            id: response.user!.id,
+            name: userName,
+            role: selectedRole,
+            avatarUrl:
+                response.user!.userMetadata?['avatar_url'] as String?,
+          );
+
+          debugPrint('LOGIN SELECTED ROLE = $selectedRole');
+          debugPrint('PROFILE ROLE AFTER LOGIN = ${_currentProfile!.role}');
         }
       }
     } else {
@@ -192,7 +248,28 @@ class AuthManager extends ChangeNotifier {
   }) async {
     final profileService = ServiceLocator.instance.profileService;
 
-    // 1. Try to fetch existing profile from backend
+    print('LOGIN ROLE DEBUG: preferredRole = $preferredRole');
+
+    // If a role was explicitly selected on the login screen,
+    // use that role for this login session.
+    if (preferredRole != null && preferredRole.trim().isNotEmpty) {
+      final metadataName = user.userMetadata?['name'] ??
+          user.userMetadata?['full_name'] ??
+          preferredName ??
+          user.email?.split('@').first ??
+          'User';
+
+      _currentProfile = ProfileModel(
+        id: user.id,
+        name: metadataName.toString(),
+        role: preferredRole.toLowerCase(),
+        avatarUrl: user.userMetadata?['avatar_url'] as String?,
+      );
+      notifyListeners();
+      return;
+    }
+
+    // Otherwise, use the existing backend profile.
     try {
       final profile = await profileService.getMyProfile();
       _currentProfile = profile;

@@ -51,19 +51,26 @@ class _TransitionAppState extends State<TransitionApp> {
 
   void _onAuthChanged() {
     final auth = ServiceLocator.instance.authManager;
+
     if (auth.isAuthenticated && auth.currentProfile != null) {
       final role = auth.currentProfile!.role.toLowerCase();
-      if (_currentRole == UserRoleNav.landing || _currentRole == UserRoleNav.roleSelect) {
-        if (role == 'student') {
+
+      if (role == 'student') {
+        if (_currentRole != UserRoleNav.student) {
           _switchRole(UserRoleNav.student);
-        } else if (role == 'industrialist' || role == 'industry') {
+        }
+      } else if (role == 'industrialist' || role == 'industry') {
+        if (_currentRole != UserRoleNav.industrialist) {
           _switchRole(UserRoleNav.industrialist);
-        } else {
+        }
+      } else {
+        if (_currentRole != UserRoleNav.citizen) {
           _switchRole(UserRoleNav.citizen);
         }
       }
     } else if (!auth.isAuthenticated) {
-      if (_currentRole != UserRoleNav.landing && _currentRole != UserRoleNav.roleSelect) {
+      if (_currentRole != UserRoleNav.landing &&
+          _currentRole != UserRoleNav.roleSelect) {
         _switchRole(UserRoleNav.landing);
       }
     }
@@ -90,6 +97,58 @@ class _TransitionAppState extends State<TransitionApp> {
   }
 
   void _switchRole(UserRoleNav role) {
+    final auth = ServiceLocator.instance.authManager;
+    final profileRole =
+        auth.currentProfile?.role.toLowerCase().trim();
+
+    if (auth.isAuthenticated && profileRole != null) {
+      final requestedRole = switch (role) {
+        UserRoleNav.citizen => 'citizen',
+        UserRoleNav.student => 'student',
+        UserRoleNav.industrialist => 'industrialist',
+        _ => null,
+      };
+
+      if (requestedRole != null &&
+          requestedRole != profileRole &&
+          !(profileRole == 'industrialist' && requestedRole == 'industrialist')) {
+        final displayRole = profileRole == 'industrialist'
+            ? 'INDUSTRY'
+            : profileRole.toUpperCase();
+
+        showDialog<void>(
+          context: context,
+          builder: (dialogContext) {
+            return AlertDialog(
+              title: const Text(
+                'Access Restricted',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 22,
+                ),
+              ),
+              content: Text(
+                'You are signed in as $displayRole.\n\n'
+                'You cannot access another role while signed in.\n\n'
+                'Please log out and sign in again as the required role.',
+                style: const TextStyle(
+                  fontSize: 17,
+                  height: 1.5,
+                ),
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+        return;
+      }
+    }
+
     setState(() {
       _currentRole = role;
       switch (role) {

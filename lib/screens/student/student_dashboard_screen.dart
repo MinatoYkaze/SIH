@@ -25,6 +25,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   String? _errorMessage;
   StudentDashboardModel? _dashboard;
   List<IssueModel> _challenges = [];
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -62,7 +64,16 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
       if (mounted) {
         setState(() {
           _dashboard = results[0] as StudentDashboardModel;
-          _challenges = (results[1] as IssueListResponse).items;
+          _challenges = (results[1] as IssueListResponse)
+              .items
+              .where((issue) {
+                final status = issue.status.toUpperCase();
+                return status != 'SOLUTION_SUBMITTED' &&
+                    status != 'EVALUATED' &&
+                    status != 'RESOLVED' &&
+                    status != 'CITIZEN_DELETED';
+              })
+              .toList();
           _isLoading = false;
         });
       }
@@ -74,6 +85,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         });
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -95,6 +112,16 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     }
 
     final d = _dashboard;
+
+    final filteredChallenges = _challenges.where((issue) {
+      final query = _searchQuery.trim().toLowerCase();
+      if (query.isEmpty) return true;
+
+      return issue.title.toLowerCase().contains(query) ||
+          issue.description.toLowerCase().contains(query) ||
+          issue.displayCategory.toLowerCase().contains(query) ||
+          (issue.address ?? '').toLowerCase().contains(query);
+    }).toList();
 
     return RefreshIndicator(
       onRefresh: _loadData,
@@ -169,6 +196,42 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
             ),
             const SizedBox(height: 20),
 
+            // Challenge Search
+            TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+              decoration: InputDecoration(
+                hintText: "Search challenges by name...",
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
             // Challenges List
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -178,20 +241,22 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 Text(
-                  "${_challenges.length} Issues",
+                  "${filteredChallenges.length} Issues",
                   style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                 ),
               ],
             ),
             const SizedBox(height: 12),
 
-            if (_challenges.isEmpty)
-              const EmptyView(
-                message: "No open field challenges available right now.",
+            if (filteredChallenges.isEmpty)
+              EmptyView(
+                message: _searchQuery.isEmpty
+                    ? "No open field challenges available right now."
+                    : "No challenges match your search.",
                 icon: Icons.assignment_turned_in_outlined,
               )
             else
-              ..._challenges.map(
+              ...filteredChallenges.map(
                 (p) => Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   child: Padding(

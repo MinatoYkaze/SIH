@@ -2,7 +2,7 @@ class AppConfig {
   static const String localBaseUrl = 'http://127.0.0.1:8000';
   static const String deployedBaseUrl = 'https://sih-a24k.onrender.com';
 
-  static const String defaultBaseUrl = localBaseUrl;
+  static const String defaultBaseUrl = deployedBaseUrl;
 
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
