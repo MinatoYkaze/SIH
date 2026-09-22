@@ -108,14 +108,23 @@ class ApiClient {
     });
   }
 
-  Future<void> delete(
+  Future<dynamic> delete(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Map<String, dynamic>? body,
   }) async {
     await _send((host) async {
       final uri = _buildUri(host, path, queryParameters);
       final headers = await _headers();
-      return _httpClient.delete(uri, headers: headers).timeout(AppConfig.requestTimeout);
+      final encodedBody = body == null ? null : jsonEncode(body);
+
+      return _httpClient
+          .delete(
+            uri,
+            headers: headers,
+            body: encodedBody,
+          )
+          .timeout(AppConfig.requestTimeout);
     });
   }
 

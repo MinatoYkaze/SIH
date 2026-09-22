@@ -5,6 +5,7 @@ import '../../services/dashboard_service.dart';
 import '../../services/evidence_service.dart';
 import '../../services/issue_service.dart';
 import '../../services/profile_service.dart';
+import '../../services/points_service.dart';
 import '../../services/solution_service.dart';
 import '../../services/sponsorship_service.dart';
 
@@ -16,6 +17,7 @@ class ServiceLocator {
       tokenProvider: () async => AuthManager.instance.currentToken,
     );
     profileService = ProfileService(_apiClient);
+    pointsService = PointsService(_apiClient);
     issueService = IssueService(_apiClient);
     applicationService = ApplicationService(_apiClient);
     solutionService = SolutionService(_apiClient);
@@ -26,6 +28,7 @@ class ServiceLocator {
 
   late final ApiClient _apiClient;
   late final ProfileService profileService;
+  late final PointsService pointsService;
   late final IssueService issueService;
   late final ApplicationService applicationService;
   late final SolutionService solutionService;

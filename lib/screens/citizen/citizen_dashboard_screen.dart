@@ -1,3 +1,4 @@
+import '../../models/points.dart';
 import 'package:flutter/material.dart';
 import '../../core/routing/app_view.dart';
 import '../../core/services/service_locator.dart';
@@ -26,6 +27,7 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
   List<IssueModel> _myReportedIssues = [];
   List<IssueModel> _nearbyIssues = [];
   String _activeFilter = 'All';
+  PointsModel? _points;
 
   @override
   void initState() {
@@ -41,6 +43,7 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
 
     final dashboardService = ServiceLocator.instance.dashboardService;
     final issueService = ServiceLocator.instance.issueService;
+    final pointsService = ServiceLocator.instance.pointsService;
 
     try {
       final results = await Future.wait([
@@ -62,6 +65,7 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
               pageSize: 10,
               items: [],
             )),
+        pointsService.getMyPoints(),
       ]);
 
       if (mounted) {
@@ -69,6 +73,7 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
           _dashboard = results[0] as CitizenDashboardModel;
           _myReportedIssues = (results[1] as IssueListResponse).items;
           _nearbyIssues = (results[2] as IssueListResponse).items;
+          _points = results[3] as PointsModel;
           _isLoading = false;
         });
       }
@@ -158,6 +163,56 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
             ),
             const SizedBox(height: 16),
 
+            if (_points != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF006B4D),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.stars_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                    const SizedBox(width: 12),
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Karma Points',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Your civic contribution',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${_points!.points}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 16),
+
             // Search Bar
             TextField(
               decoration: InputDecoration(
@@ -204,7 +259,13 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
 
             // Map Preview / Ops Banner
             InkWell(
-              onTap: () => widget.onNavigate(AppView.problemDetailView),
+              onTap: _nearbyIssues.isEmpty
+                  ? null
+                  : () {
+                      final issue = _nearbyIssues.first;
+                      widget.onSelectIssue?.call(issue.id);
+                      widget.onNavigate(AppView.problemDetailView);
+                    },
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 height: 180,

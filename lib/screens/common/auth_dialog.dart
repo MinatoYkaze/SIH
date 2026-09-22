@@ -29,17 +29,14 @@ class _AuthDialogState extends State<AuthDialog> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
-  late String _selectedRole;
+  String? _selectedRole;
   bool _isLoading = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _selectedRole = widget.initialRole ?? 'citizen';
-    if (_selectedRole != 'citizen' && _selectedRole != 'student' && _selectedRole != 'industrialist') {
-      _selectedRole = 'citizen';
-    }
+    _selectedRole = widget.initialRole;
   }
 
   @override
@@ -61,18 +58,20 @@ class _AuthDialogState extends State<AuthDialog> {
     final auth = ServiceLocator.instance.authManager;
 
     try {
+      print('AUTH DIALOG ROLE DEBUG: $_selectedRole');
+
       if (_isSignUp) {
         await auth.signUp(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
           name: _nameController.text.trim(),
-          role: _selectedRole,
+          role: _selectedRole!,
         );
       } else {
         await auth.signIn(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
-          preferredRole: _selectedRole,
+          preferredRole: _selectedRole!,
         );
       }
 
@@ -185,7 +184,7 @@ class _AuthDialogState extends State<AuthDialog> {
                 ],
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  initialValue: _selectedRole,
+                  value: _selectedRole,
                   decoration: const InputDecoration(
                     labelText: 'Target Role',
                     border: OutlineInputBorder(),
@@ -196,9 +195,8 @@ class _AuthDialogState extends State<AuthDialog> {
                     DropdownMenuItem(value: 'student', child: Text('Student (Field Unit)')),
                     DropdownMenuItem(value: 'industrialist', child: Text('Industrialist (Patron/Mentor)')),
                   ],
-                  onChanged: (v) {
-                    if (v != null) setState(() => _selectedRole = v);
-                  },
+                  hint: const Text('Select your role'),
+                  onChanged: (v) => setState(() => _selectedRole = v),
                 ),
                 const SizedBox(height: 14),
                 SizedBox(

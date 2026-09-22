@@ -71,8 +71,46 @@ class IssueService {
     return IssueModel.fromJson(response as Map<String, dynamic>);
   }
 
-  Future<void> deleteIssue(String issueId) async {
-    await _client.delete('/issues/$issueId');
+  Future<Map<String, dynamic>> verifyIssue(
+    String issueId,
+    String response,
+  ) async {
+    final result = await _client.post(
+      '/issues/$issueId/verify',
+      body: {
+        'response': response,
+      },
+    );
+
+    return result as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>?> getMyVerification(
+    String issueId,
+  ) async {
+    final response = await _client.get(
+      '/issues/$issueId/verification/me',
+    );
+
+    if (response == null) {
+      return null;
+    }
+
+    return response as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> deleteIssue(
+    String issueId,
+    String reason,
+  ) async {
+    final response = await _client.delete(
+      '/issues/$issueId',
+      body: {
+        'reason': reason,
+      },
+    );
+
+    return response as Map<String, dynamic>;
   }
 
   Future<IssueMediaModel> attachMedia(
